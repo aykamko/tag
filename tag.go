@@ -4,79 +4,93 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"regexp"
-	"strings"
 
 	"github.com/fatih/color"
 )
 
-var (
-	red  = color.RedString
-	blue = color.BlueString
-	ansi = regexp.MustCompile(`\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?[a-zA-Z]`)
-	cwd  string
-)
-
-func stripAnsi(str string) string {
-	return ansi.ReplaceAllString(str, "")
+func check(e error) {
+	if e != nil {
+		log.Fatal(e)
+	}
 }
 
-func writeAlias(writer io.Writer, index int, filename, linenum string) {
-	fmt.Fprintf(writer, "alias f%d='vim %s/%s +%s'\n", index, cwd, filename, linenum)
+var (
+	red        = color.RedString
+	blue       = color.BlueString
+	ansi       = regexp.MustCompile(`\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?[a-zA-Z]`)
+	lineNumber = regexp.MustCompile(`^(\d+):`)
+	cwd        string
+)
+
+type AliasFile struct {
+	buf    bytes.Buffer
+	writer *bufio.Writer
+}
+
+func NewAliasFile() *AliasFile {
+	a := &AliasFile{}
+	a.writer = bufio.NewWriter(&a.buf)
+	return a
+}
+
+func (a *AliasFile) WriteAlias(index int, filename, linenum string) {
+	fmt.Fprintf(a.writer, "alias f%d='vim %s/%s +%s'\n", index, cwd, filename, linenum)
+}
+
+func (a *AliasFile) WriteFile(filename string) {
+	err := a.writer.Flush()
+	check(err)
+
+	err = ioutil.WriteFile(filename, a.buf.Bytes(), 0644)
+	check(err)
 }
 
 func main() {
-	cmd := exec.Command("ag", "--group", "--color", os.Args[1])
+	cmd := exec.Command("ag", append([]string{"--group", "--color"}, os.Args[1:]...)...)
 	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err)
+
 	scanner := bufio.NewScanner(stdout)
 	err = cmd.Start()
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err)
+
 	cwd, err = os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err)
 
 	var (
-		aliasBuf   bytes.Buffer
-		line       string
-		curfile    string
-		linenumEnd int
-		aliasIndex int
+		line         string
+		strippedLine string
+		curfile      string
+		groups       []string
 	)
-	bufWriter := bufio.NewWriter(&aliasBuf)
-	aliasIndex = 1
+	aliasFile := NewAliasFile()
+	aliasIndex := 1
+
 	for scanner.Scan() {
 		line = scanner.Text()
+		strippedLine = stripAnsi(line)
 		if len(line) > 0 {
-			linenumEnd = strings.IndexByte(line, ':')
-			if linenumEnd > 0 {
-				writeAlias(bufWriter, aliasIndex, curfile, stripAnsi(line[:linenumEnd]))
+			groups = lineNumber.FindStringSubmatch(strippedLine)
+			if len(groups) > 0 {
+				aliasFile.WriteAlias(aliasIndex, curfile, stripAnsi(groups[1]))
 				fmt.Printf("%s%s%s %s\n", blue("["), red(fmt.Sprintf("%d", aliasIndex)), blue("]"), line)
 				aliasIndex++
 				continue
 			}
 
-			curfile = stripAnsi(line)
+			curfile = strippedLine
 		}
 		fmt.Println(line)
 	}
 
-	err = bufWriter.Flush()
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = ioutil.WriteFile("/tmp/tag_aliases", aliasBuf.Bytes(), 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
+	aliasFile.WriteFile("/tmp/tag_aliases")
+}
+
+func stripAnsi(str string) string {
+	return ansi.ReplaceAllString(str, "")
 }
