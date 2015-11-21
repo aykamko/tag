@@ -60,7 +60,7 @@ func getOutputColors(args []string) (pathColor string, lineNumberColor string) {
 	return
 }
 
-func generateShortcuts(cmd *exec.Cmd) {
+func generateShortcuts(cmd *exec.Cmd) int {
 	pathColor, lineNumberColor := getOutputColors(os.Args[1:])
 	pathRe := regexp.MustCompile(
 		fmt.Sprintf(`^\x1b\[%sm([^\x1b]+)`, pathColor))
@@ -80,6 +80,7 @@ func generateShortcuts(cmd *exec.Cmd) {
 		groupIdxs []int
 	)
 	aliasFile := NewAliasFile()
+	defer aliasFile.WriteFile("/tmp/tag_aliases")
 	aliasIndex := 1
 
 	err = cmd.Start()
@@ -100,15 +101,22 @@ func generateShortcuts(cmd *exec.Cmd) {
 		fmt.Println(string(line))
 	}
 
-	aliasFile.WriteFile("/tmp/tag_aliases")
+	err = cmd.Wait()
+	if err != nil {
+		return 1
+	}
+	return 0
 }
 
-func passThrough(cmd *exec.Cmd) {
+func passThrough(cmd *exec.Cmd) int {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
-	if err := cmd.Run(); err != nil {
-		os.Exit(1)
+
+	err := cmd.Run()
+	if err != nil {
+		return 1
 	}
+	return 0
 }
 
 func main() {
@@ -117,12 +125,12 @@ func main() {
 	args = append(args, "--color")
 
 	cmd := exec.Command("ag", args...)
+	cmd.Stderr = os.Stderr
 
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 { // Data being piped from stdin
-		passThrough(cmd)
-		return
+		os.Exit(passThrough(cmd))
 	}
 
-	generateShortcuts(cmd)
+	os.Exit(generateShortcuts(cmd))
 }
