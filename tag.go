@@ -20,9 +20,11 @@ func check(e error) {
 }
 
 var (
-	red  = color.RedString
-	blue = color.BlueString
-	cwd  string
+	red          = color.RedString
+	blue         = color.BlueString
+	pathRe       = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x00\x1b]+)[^\x00]*\x00`)
+	lineNumberRe = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:`)
+	cwd          string
 )
 
 type AliasFile struct {
@@ -48,24 +50,18 @@ func (a *AliasFile) WriteFile(filename string) {
 	check(err)
 }
 
-func getOutputColors(args []string) (pathColor string, lineNumberColor string) {
-	pathColor, lineNumberColor = "1;32", "1;33"
-	for i, flag := range args {
-		if flag == "--color-path" && i+1 < len(args) {
-			pathColor = args[i+1]
-		} else if flag == "--color-line-number" && i+1 < len(args) {
-			lineNumberColor = args[i+1]
+func hasOption(args []string, option string) bool {
+	for i := len(args) - 1; i >= 0; i-- {
+		if args[i] == option {
+			return true
 		}
 	}
-	return
+	return false
 }
 
 func generateShortcuts(cmd *exec.Cmd) int {
-	pathColor, lineNumberColor := getOutputColors(os.Args[1:])
-	pathRe := regexp.MustCompile(
-		fmt.Sprintf(`^\x1b\[%sm([^\x1b]+)`, pathColor))
-	lineNumberRe := regexp.MustCompile(
-		fmt.Sprintf(`^\x1b\[%sm(\d+)\x1b\[0m\x1b\[K:`, lineNumberColor))
+	color.NoColor = hasOption(cmd.Args, "--nocolor")
+	cmd.Args = append(cmd.Args, "--null")
 
 	stdout, err := cmd.StdoutPipe()
 	check(err)
@@ -89,13 +85,17 @@ func generateShortcuts(cmd *exec.Cmd) int {
 	for scanner.Scan() {
 		line = scanner.Bytes()
 		if len(line) > 0 {
+			if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
+				// Extract path, print path, trancate path prefix
+				curPath = string(line[groupIdxs[2]:groupIdxs[3]])
+				fmt.Println(string(line[:groupIdxs[1]]))
+				line = line[groupIdxs[1]:]
+			}
 			if groupIdxs = lineNumberRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
 				aliasFile.WriteAlias(aliasIndex, curPath, string(line[groupIdxs[2]:groupIdxs[3]]))
 				fmt.Printf("%s%s%s %s\n", blue("["), red("%d", aliasIndex), blue("]"), string(line))
 				aliasIndex++
 				continue
-			} else if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
-				curPath = string(line[groupIdxs[2]:groupIdxs[3]])
 			}
 		}
 		fmt.Println(string(line))
@@ -120,9 +120,8 @@ func passThrough(cmd *exec.Cmd) int {
 }
 
 func main() {
-	args := []string{"--group"}
+	args := []string{"--group", "--color"}
 	args = append(args, os.Args[1:]...)
-	args = append(args, "--color")
 
 	cmd := exec.Command("ag", args...)
 	cmd.Stderr = os.Stderr
