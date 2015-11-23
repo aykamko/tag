@@ -154,8 +154,10 @@ func main() {
 	cmd := exec.Command("ag", args...)
 	cmd.Stderr = os.Stderr
 
-	stat, _ := os.Stdin.Stat()
-	if noTag || stat.Mode()&os.ModeCharDevice == 0 { // Data being piped from stdin
+	inStat, _ := os.Stdin.Stat()
+	outStat, _ := os.Stdout.Stat()
+	if noTag || inStat.Mode()&os.ModeCharDevice == 0 || outStat.Mode()&os.ModeCharDevice == 0 {
+		// Data being piped from stdin
 		os.Exit(passThrough(cmd))
 	}
 
