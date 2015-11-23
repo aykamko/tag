@@ -24,59 +24,75 @@ var (
 	blue         = color.BlueString
 	pathRe       = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x00\x1b]+)[^\x00]*\x00`)
 	lineNumberRe = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:`)
-	cwd          string
 )
 
 type AliasFile struct {
-	buf    bytes.Buffer
-	writer *bufio.Writer
+	filename string
+	fmtStr   string
+	buf      bytes.Buffer
+	writer   *bufio.Writer
 }
 
 func NewAliasFile() *AliasFile {
-	a := &AliasFile{}
+	cwd, err := os.Getwd()
+	check(err)
+
+	aliasPrefix := os.Getenv("TAG_ALIAS_PREFIX")
+	if len(aliasPrefix) == 0 {
+		aliasPrefix = "e"
+	}
+
+	aliasFilename := os.Getenv("TAG_ALIAS_FILE")
+	if len(aliasFilename) == 0 {
+		aliasFilename = "/tmp/tag_aliases"
+	}
+
+	a := &AliasFile{
+		fmtStr:   "alias " + aliasPrefix + "%d='vim " + cwd + "/%s +%s'\n",
+		filename: aliasFilename,
+	}
 	a.writer = bufio.NewWriter(&a.buf)
 	return a
 }
 
 func (a *AliasFile) WriteAlias(index int, filename, linenum string) {
-	fmt.Fprintf(a.writer, "alias f%d='vim %s/%s +%s'\n", index, cwd, filename, linenum)
+	fmt.Fprintf(a.writer, a.fmtStr, index, filename, linenum)
 }
 
-func (a *AliasFile) WriteFile(filename string) {
+func (a *AliasFile) WriteFile() {
 	err := a.writer.Flush()
 	check(err)
 
-	err = ioutil.WriteFile(filename, a.buf.Bytes(), 0644)
+	err = ioutil.WriteFile(a.filename, a.buf.Bytes(), 0644)
 	check(err)
 }
 
-func hasOption(args []string, option string) bool {
+func optionIndex(args []string, option string) int {
 	for i := len(args) - 1; i >= 0; i-- {
 		if args[i] == option {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
-func generateShortcuts(cmd *exec.Cmd) int {
-	color.NoColor = hasOption(cmd.Args, "--nocolor")
+func generateTags(cmd *exec.Cmd) int {
+	color.NoColor = (optionIndex(cmd.Args, "--nocolor") > 0)
 	cmd.Args = append(cmd.Args, "--null")
 
 	stdout, err := cmd.StdoutPipe()
 	check(err)
 	scanner := bufio.NewScanner(stdout)
 
-	cwd, err = os.Getwd()
-	check(err)
-
 	var (
 		line      []byte
 		curPath   string
 		groupIdxs []int
 	)
+
 	aliasFile := NewAliasFile()
-	defer aliasFile.WriteFile("/tmp/tag_aliases")
+	defer aliasFile.WriteFile()
+
 	aliasIndex := 1
 
 	err = cmd.Start()
@@ -86,7 +102,7 @@ func generateShortcuts(cmd *exec.Cmd) int {
 		line = scanner.Bytes()
 		if len(line) > 0 {
 			if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
-				// Extract path, print path, trancate path prefix
+				// Extract path, print path, slice off path prefix
 				curPath = string(line[groupIdxs[2]:groupIdxs[3]])
 				fmt.Println(string(line[:groupIdxs[1]]))
 				line = line[groupIdxs[1]:]
@@ -120,16 +136,28 @@ func passThrough(cmd *exec.Cmd) int {
 }
 
 func main() {
-	args := []string{"--group", "--color"}
-	args = append(args, os.Args[1:]...)
+	noTag := false
+	var tagArgs []string
+
+	switch i := optionIndex(os.Args, "--notag"); {
+	case i > 0:
+		os.Args = append(os.Args[:i], os.Args[i+1:]...)
+		fallthrough
+	case len(os.Args) == 1:
+		noTag = true
+	default:
+		tagArgs = []string{"--group", "--color"}
+	}
+
+	args := append(tagArgs, os.Args[1:]...)
 
 	cmd := exec.Command("ag", args...)
 	cmd.Stderr = os.Stderr
 
 	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 { // Data being piped from stdin
+	if noTag || stat.Mode()&os.ModeCharDevice == 0 { // Data being piped from stdin
 		os.Exit(passThrough(cmd))
 	}
 
-	os.Exit(generateShortcuts(cmd))
+	os.Exit(generateTags(cmd))
 }
