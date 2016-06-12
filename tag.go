@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"text/template"
 
 	"github.com/fatih/color"
 )
@@ -34,21 +35,23 @@ type AliasFile struct {
 }
 
 func NewAliasFile() *AliasFile {
-	cwd, err := os.Getwd()
-	check(err)
+	aliasFilename := os.Getenv("TAG_ALIAS_FILE")
+	if len(aliasFilename) == 0 {
+		aliasFilename = "/tmp/tag_aliases"
+	}
 
 	aliasPrefix := os.Getenv("TAG_ALIAS_PREFIX")
 	if len(aliasPrefix) == 0 {
 		aliasPrefix = "e"
 	}
 
-	aliasFilename := os.Getenv("TAG_ALIAS_FILE")
-	if len(aliasFilename) == 0 {
-		aliasFilename = "/tmp/tag_aliases"
+	aliasCmdFmtString := os.Getenv("TAG_ALIAS_CMD_FMT_STRING")
+	if len(aliasCmdFmtString) == 0 {
+		aliasCmdFmtString = "vim {{.Filename}} +{{.LineNumber}}"
 	}
 
 	a := &AliasFile{
-		fmtStr:   "alias " + aliasPrefix + "%d='vim " + cwd + "/%s +%s'\n",
+		fmtStr:   "alias " + aliasPrefix + "{{.MatchIndex}}='" + aliasCmdFmtString + "'\n",
 		filename: aliasFilename,
 	}
 	a.writer = bufio.NewWriter(&a.buf)
@@ -56,7 +59,16 @@ func NewAliasFile() *AliasFile {
 }
 
 func (a *AliasFile) WriteAlias(index int, filename, linenum string) {
-	fmt.Fprintf(a.writer, a.fmtStr, index, filename, linenum)
+	t := template.Must(template.New("alias").Parse(a.fmtStr))
+
+	aliasVars := struct {
+		MatchIndex int
+		Filename   string
+		LineNumber string
+	}{index, filename, linenum}
+
+	err := t.Execute(a.writer, aliasVars)
+	check(err)
 }
 
 func (a *AliasFile) WriteFile() {
@@ -74,6 +86,10 @@ func optionIndex(args []string, option string) int {
 		}
 	}
 	return -1
+}
+
+func tagPrefix(aliasIndex int) string {
+	return blue("[") + red("%d", aliasIndex) + blue("]")
 }
 
 func generateTags(cmd *exec.Cmd) int {
@@ -109,7 +125,7 @@ func generateTags(cmd *exec.Cmd) int {
 			}
 			if groupIdxs = lineNumberRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
 				aliasFile.WriteAlias(aliasIndex, curPath, string(line[groupIdxs[2]:groupIdxs[3]]))
-				fmt.Printf("%s%s%s %s\n", blue("["), red("%d", aliasIndex), blue("]"), string(line))
+				fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
 				aliasIndex++
 				continue
 			}
