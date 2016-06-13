@@ -45,7 +45,7 @@ func NewAliasFile() *AliasFile {
 		aliasPrefix = "e"
 	}
 
-	aliasCmdFmtString := os.Getenv("TAG_ALIAS_CMD_FMT_STRING")
+	aliasCmdFmtString := os.Getenv("TAG_CMD_FMT_STRING")
 	if len(aliasCmdFmtString) == 0 {
 		aliasCmdFmtString = "vim {{.Filename}} +{{.LineNumber}}"
 	}
