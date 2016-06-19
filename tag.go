@@ -151,6 +151,12 @@ func passThrough(cmd *exec.Cmd) int {
 	return 0
 }
 
+func isatty(f *os.File) bool {
+	stat, err := f.Stat()
+	check(err)
+	return stat.Mode()&os.ModeCharDevice != 0
+}
+
 func main() {
 	noTag := false
 	var tagArgs []string
@@ -165,14 +171,20 @@ func main() {
 		tagArgs = []string{"--group", "--color"}
 	}
 
-	args := append(tagArgs, os.Args[1:]...)
+	/* From ag src/options.c:
+	 * If we're not outputting to a terminal. change output to:
+	 * turn off colors
+	 * print filenames on every line
+	 */
+	args := os.Args[1:]
+	if isatty(os.Stdout) {
+		args = append(tagArgs, args...)
+	}
 
 	cmd := exec.Command("ag", args...)
 	cmd.Stderr = os.Stderr
 
-	inStat, _ := os.Stdin.Stat()
-	outStat, _ := os.Stdout.Stat()
-	if noTag || inStat.Mode()&os.ModeCharDevice == 0 || outStat.Mode()&os.ModeCharDevice == 0 {
+	if noTag || !isatty(os.Stdin) || !isatty(os.Stdout) {
 		// Data being piped from stdin
 		os.Exit(passThrough(cmd))
 	}
