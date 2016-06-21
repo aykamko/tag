@@ -4,14 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/fatih/color"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"text/template"
-
-	"github.com/fatih/color"
 )
 
 func check(e error) {
@@ -120,6 +120,7 @@ func generateTags(cmd *exec.Cmd) int {
 			if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
 				// Extract path, print path, slice off path prefix
 				curPath = string(line[groupIdxs[2]:groupIdxs[3]])
+				curPath, _ = filepath.Abs(curPath)
 				fmt.Println(string(line[:groupIdxs[1]]))
 				line = line[groupIdxs[1]:]
 			}
