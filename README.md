@@ -28,14 +28,16 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
 
 # Installation
 
-1. Install the `tag` binary.
-    - OSX
+1. Install the `tag` binary using one of the following methods.
+    - Homebrew (OSX)
       ```
       $ brew tap aykamko/tag-ag
       $ brew install tag-ag
       ```
 
-    - Other platforms and developers
+    - [Download a compressed binary for your platform](https://github.com/aykamko/tag/releases)
+
+    - Developers and other platforms
       ```
       $ go get -u github.com/aykamko/tag/...
       $ go install github.com/aykamko/tag
