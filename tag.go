@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"text/template"
 
@@ -120,6 +121,8 @@ func generateTags(cmd *exec.Cmd) int {
 			if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
 				// Extract path, print path, slice off path prefix
 				curPath = string(line[groupIdxs[2]:groupIdxs[3]])
+				curPath, err = filepath.Abs(curPath)
+				check(err)
 				fmt.Println(string(line[:groupIdxs[1]]))
 				line = line[groupIdxs[1]:]
 			}
