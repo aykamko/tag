@@ -28,6 +28,8 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
 
 # Installation
 
+1. Make sure [`ag`](https://github.com/ggreer/the_silver_searcher) is installed, version `>= 0.25.0`.
+
 1. Install the `tag` binary using one of the following methods.
     - Homebrew (OSX)
       ```
