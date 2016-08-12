@@ -22,10 +22,11 @@ func check(e error) {
 }
 
 var (
-	red          = color.RedString
-	blue         = color.BlueString
-	pathRe       = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x00\x1b]+)[^\x00]*\x00`)
-	lineNumberRe = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:`)
+	red           = color.RedString
+	blue          = color.BlueString
+	pathRe        = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x00\x1b]+)[^\x00]*\x00`)
+	lineNumberRe  = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:`)
+	cleanFilename = regexp.MustCompile(`([ \(\)\[\]\<\>])`)
 )
 
 type AliasFile struct {
@@ -61,6 +62,8 @@ func NewAliasFile() *AliasFile {
 
 func (a *AliasFile) WriteAlias(index int, filename, linenum string) {
 	t := template.Must(template.New("alias").Parse(a.fmtStr))
+
+	filename = cleanFilename.ReplaceAllString(filename, "\\$1")
 
 	aliasVars := struct {
 		MatchIndex int
