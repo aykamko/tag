@@ -24,8 +24,8 @@ func check(e error) {
 var (
 	red           = color.RedString
 	blue          = color.BlueString
-	pathRe        = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x00\x1b]+)[^\x00]*\x00`)
-	lineNumberRe  = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:`)
+	pathRe        = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x1b]+).*`)
+	lineNumberRe  = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:.*`)
 	cleanFilename = regexp.MustCompile(`([ \(\)\[\]\<\>])`)
 )
 
@@ -96,13 +96,41 @@ func tagPrefix(aliasIndex int) string {
 	return blue("[") + red("%d", aliasIndex) + blue("]")
 }
 
+// Modified from: https://golang.org/src/bufio/scan.go?s=10982:11013
+// dropCR drops a terminal \r from the data.
+func dropCR(data []byte) []byte {
+	if len(data) > 0 && data[len(data)-1] == '\r' {
+		return data[0 : len(data)-1]
+	}
+	return data
+}
+
+// Modified from: https://golang.org/src/bufio/scan.go?s=11500:11578
+func scanLinesAndNulls(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexAny(data, "\n\x00"); i >= 0 {
+		// We have a full newline-terminated line or a null-terminated sequence.
+		return i + 1, dropCR(data[0:i]), nil
+	}
+	// If we're at EOF, we have a final, non-terminated line. Return it.
+	if atEOF {
+		return len(data), dropCR(data), nil
+	}
+	// Request more data.
+	return 0, nil, nil
+}
+
 func generateTags(cmd *exec.Cmd) int {
 	color.NoColor = (optionIndex(cmd.Args, "--nocolor") > 0)
 	cmd.Args = append(cmd.Args, "--null")
 
 	stdout, err := cmd.StdoutPipe()
 	check(err)
+
 	scanner := bufio.NewScanner(stdout)
+	scanner.Split(scanLinesAndNulls)
 
 	var (
 		line      []byte
@@ -120,23 +148,20 @@ func generateTags(cmd *exec.Cmd) int {
 
 	for scanner.Scan() {
 		line = scanner.Bytes()
-		if len(line) > 0 {
-			if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
-				// Extract path, print path, slice off path prefix
-				curPath = string(line[groupIdxs[2]:groupIdxs[3]])
-				curPath, err = filepath.Abs(curPath)
-				check(err)
-				fmt.Println(string(line[:groupIdxs[1]]))
-				line = line[groupIdxs[1]:]
-			}
-			if groupIdxs = lineNumberRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
-				aliasFile.WriteAlias(aliasIndex, curPath, string(line[groupIdxs[2]:groupIdxs[3]]))
-				fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
-				aliasIndex++
-				continue
-			}
+		if groupIdxs = lineNumberRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
+			// Extract and tagged match
+			aliasFile.WriteAlias(aliasIndex, curPath, string(line[groupIdxs[2]:groupIdxs[3]]))
+			fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
+			aliasIndex++
+		} else if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
+			// Extract and print path
+			curPath = string(line[groupIdxs[2]:groupIdxs[3]])
+			curPath, err = filepath.Abs(curPath)
+			check(err)
+			fmt.Println(string(line[:groupIdxs[1]]))
+		} else {
+			fmt.Println(string(line))
 		}
-		fmt.Println(string(line))
 	}
 
 	err = cmd.Wait()

@@ -2,6 +2,9 @@ SHELL:=/bin/bash
 
 GOBUILD=go build -v github.com/aykamko/tag >/dev/null
 
+build:
+	go build
+
 generate_release_binaries:
 	mkdir -p release; \
 	cd release; \
