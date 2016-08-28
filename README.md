@@ -37,6 +37,13 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
       $ brew install tag-ag
       ```
 
+    - AUR (Arch Linux)
+
+      Using your favorite [AUR helper](https://wiki.archlinux.org/index.php/AUR_helpers), install the [tag-ag AUR package](https://aur.archlinux.org/packages/tag-ag/) like this:
+      ```
+      $ aura -A tag-ag
+      ```
+
     - [Download a compressed binary for your platform](https://github.com/aykamko/tag/releases)
 
     - Developers and other platforms
