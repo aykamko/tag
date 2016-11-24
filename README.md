@@ -59,7 +59,7 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
       ```bash
       if hash ag 2>/dev/null; then
         export TAG_SEARCH_PROG=ag  # replace with rg for ripgrep
-        tag() { command tag "$@"; source ${TAG_ALIAS_FILE:-/tmp/tag_aliases} 2>/dev/null; }
+        tag() { command tag "$@" && source ${TAG_ALIAS_FILE:-/tmp/tag_aliases} 2>/dev/null; }
         alias ag=tag  # replace with rg for ripgrep
       fi
       ```
