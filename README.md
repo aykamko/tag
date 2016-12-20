@@ -63,7 +63,7 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
 
     - `zsh`
       ```zsh
-      if (( $+commands[tag] )); then
+      if hash ag 2>/dev/null; then
         tag() { command tag "$@"; source ${TAG_ALIAS_FILE:-/tmp/tag_aliases} 2>/dev/null }
         alias ag=tag
       fi
