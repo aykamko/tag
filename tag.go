@@ -26,7 +26,6 @@ var (
 	blue          = color.BlueString
 	pathRe        = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x1b]+).*`)
 	lineNumberRe  = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:(\d+):.*`)
-	cleanFilename = regexp.MustCompile(`([ \(\)\[\]\<\>])`)
 )
 
 type AliasFile struct {
@@ -49,7 +48,7 @@ func NewAliasFile() *AliasFile {
 
 	aliasCmdFmtString := os.Getenv("TAG_CMD_FMT_STRING")
 	if len(aliasCmdFmtString) == 0 {
-		aliasCmdFmtString = "vim {{.Filename}} \"+call cursor({{.LineNumber}}, {{.ColumnNumber}})\""
+		aliasCmdFmtString = "vim '{{.Filename}}' '+call cursor({{.LineNumber}}, {{.ColumnNumber}})'"
 	}
 
 	a := &AliasFile{
@@ -62,8 +61,6 @@ func NewAliasFile() *AliasFile {
 
 func (a *AliasFile) WriteAlias(index int, filename, linenum string, colnum string) {
 	t := template.Must(template.New("alias").Parse(a.fmtStr))
-
-	filename = cleanFilename.ReplaceAllString(filename, "\\$1")
 
 	aliasVars := struct {
 		MatchIndex   int
