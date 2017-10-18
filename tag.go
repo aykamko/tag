@@ -25,7 +25,7 @@ var (
 	red           = color.RedString
 	blue          = color.BlueString
 	pathRe        = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x1b]+).*`)
-	lineNumberRe  = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:.*`)
+	lineNumberRe  = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:(\d+):.*`)
 	cleanFilename = regexp.MustCompile(`([ \(\)\[\]\<\>])`)
 )
 
@@ -49,7 +49,7 @@ func NewAliasFile() *AliasFile {
 
 	aliasCmdFmtString := os.Getenv("TAG_CMD_FMT_STRING")
 	if len(aliasCmdFmtString) == 0 {
-		aliasCmdFmtString = "vim {{.Filename}} +{{.LineNumber}}"
+		aliasCmdFmtString = "vim {{.Filename}} \"+call cursor({{.LineNumber}}, {{.ColumnNumber}})\""
 	}
 
 	a := &AliasFile{
@@ -60,16 +60,17 @@ func NewAliasFile() *AliasFile {
 	return a
 }
 
-func (a *AliasFile) WriteAlias(index int, filename, linenum string) {
+func (a *AliasFile) WriteAlias(index int, filename, linenum string, colnum string) {
 	t := template.Must(template.New("alias").Parse(a.fmtStr))
 
 	filename = cleanFilename.ReplaceAllString(filename, "\\$1")
 
 	aliasVars := struct {
-		MatchIndex int
-		Filename   string
-		LineNumber string
-	}{index, filename, linenum}
+		MatchIndex   int
+		Filename     string
+		LineNumber   string
+		ColumnNumber string
+	}{index, filename, linenum, colnum}
 
 	err := t.Execute(a.writer, aliasVars)
 	check(err)
@@ -150,7 +151,7 @@ func generateTags(cmd *exec.Cmd) int {
 		line = scanner.Bytes()
 		if groupIdxs = lineNumberRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
 			// Extract and tagged match
-			aliasFile.WriteAlias(aliasIndex, curPath, string(line[groupIdxs[2]:groupIdxs[3]]))
+			aliasFile.WriteAlias(aliasIndex, curPath, string(line[groupIdxs[2]:groupIdxs[3]]), string(line[groupIdxs[4]:groupIdxs[5]]))
 			fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
 			aliasIndex++
 		} else if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
@@ -199,7 +200,7 @@ func main() {
 	case len(os.Args) == 1:
 		noTag = true
 	default:
-		tagArgs = []string{"--group", "--color"}
+		tagArgs = []string{"--group", "--color", "--column"}
 	}
 
 	/* From ag src/options.c:
