@@ -48,7 +48,7 @@ func NewAliasFile() *AliasFile {
 
 	aliasCmdFmtString := os.Getenv("TAG_CMD_FMT_STRING")
 	if len(aliasCmdFmtString) == 0 {
-		aliasCmdFmtString = "vim '{{.Filename}}' '+call cursor({{.LineNumber}}, {{.ColumnNumber}})'"
+		aliasCmdFmtString = "vim  -c 'call cursor({{.LineNumber}}, {{.ColumnNumber}})' '{{.Filename}}'"
 	}
 
 	a := &AliasFile{
