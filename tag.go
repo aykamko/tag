@@ -134,7 +134,9 @@ func generateTags(cmd *exec.Cmd) int {
 		line      []byte
 		curPath   string
 		groupIdxs []int
+		gFlag     bool
 	)
+	gFlag = (optionIndex(cmd.Args, "-g") > 0)
 
 	aliasFile := NewAliasFile()
 	defer aliasFile.WriteFile()
@@ -152,11 +154,18 @@ func generateTags(cmd *exec.Cmd) int {
 			fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
 			aliasIndex++
 		} else if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
-			// Extract and print path
 			curPath = string(line[groupIdxs[2]:groupIdxs[3]])
 			curPath, err = filepath.Abs(curPath)
 			check(err)
-			fmt.Println(string(line[:groupIdxs[1]]))
+			if gFlag == true {
+				// Extract and print tagged path
+				firstLine := "1"
+				aliasFile.WriteAlias(aliasIndex, curPath, string(firstLine))
+				fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
+				aliasIndex++
+			} else {
+				fmt.Println(string(line[:groupIdxs[1]]))
+			}
 		} else {
 			fmt.Println(string(line))
 		}
