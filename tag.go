@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"syscall"
 	"text/template"
 
 	"github.com/fatih/color"
@@ -21,11 +22,47 @@ func check(e error) {
 	}
 }
 
+func extractCmdExitCode(err error) int {
+	if err != nil {
+		// Extract real exit code
+		// Source: https://stackoverflow.com/a/10385867
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+				return status.ExitStatus()
+			}
+		}
+		return 1
+	}
+	return 0
+}
+
+func optionIndex(args []string, option string) int {
+	for i := len(args) - 1; i >= 0; i-- {
+		if args[i] == option {
+			return i
+		}
+	}
+	return -1
+}
+
+func isatty(f *os.File) bool {
+	stat, err := f.Stat()
+	check(err)
+	return stat.Mode()&os.ModeCharDevice != 0
+}
+
+func getEnvDefault(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
 var (
-	red           = color.RedString
-	blue          = color.BlueString
-	pathRe        = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?([^\x1b]+).*`)
-	lineNumberRe  = regexp.MustCompile(`^(?:\x1b\[[^m]+m)?(\d+)(?:\x1b\[0m\x1b\[K)?:(\d+):.*`)
+	red          = color.RedString
+	blue         = color.BlueString
+	lineNumberRe = regexp.MustCompile(`^(\d+):(\d+):.*`)
+	ansi         = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`) // Source: https://superuser.com/a/380778
 )
 
 type AliasFile struct {
@@ -36,20 +73,11 @@ type AliasFile struct {
 }
 
 func NewAliasFile() *AliasFile {
-	aliasFilename := os.Getenv("TAG_ALIAS_FILE")
-	if len(aliasFilename) == 0 {
-		aliasFilename = "/tmp/tag_aliases"
-	}
-
-	aliasPrefix := os.Getenv("TAG_ALIAS_PREFIX")
-	if len(aliasPrefix) == 0 {
-		aliasPrefix = "e"
-	}
-
-	aliasCmdFmtString := os.Getenv("TAG_CMD_FMT_STRING")
-	if len(aliasCmdFmtString) == 0 {
-		aliasCmdFmtString = "vim  -c 'call cursor({{.LineNumber}}, {{.ColumnNumber}})' '{{.Filename}}'"
-	}
+	aliasFilename := getEnvDefault("TAG_ALIAS_FILE", "/tmp/tag_aliases")
+	aliasPrefix := getEnvDefault("TAG_ALIAS_PREFIX", "e")
+	aliasCmdFmtString := getEnvDefault(
+		"TAG_CMD_FMT_STRING",
+		"vim -c 'call cursor({{.LineNumber}}, {{.ColumnNumber}})' '{{.Filename}}'")
 
 	a := &AliasFile{
 		fmtStr:   "alias " + aliasPrefix + "{{.MatchIndex}}='" + aliasCmdFmtString + "'\n",
@@ -81,59 +109,24 @@ func (a *AliasFile) WriteFile() {
 	check(err)
 }
 
-func optionIndex(args []string, option string) int {
-	for i := len(args) - 1; i >= 0; i-- {
-		if args[i] == option {
-			return i
-		}
-	}
-	return -1
-}
-
 func tagPrefix(aliasIndex int) string {
 	return blue("[") + red("%d", aliasIndex) + blue("]")
 }
 
-// Modified from: https://golang.org/src/bufio/scan.go?s=10982:11013
-// dropCR drops a terminal \r from the data.
-func dropCR(data []byte) []byte {
-	if len(data) > 0 && data[len(data)-1] == '\r' {
-		return data[0 : len(data)-1]
-	}
-	return data
-}
-
-// Modified from: https://golang.org/src/bufio/scan.go?s=11500:11578
-func scanLinesAndNulls(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	if i := bytes.IndexAny(data, "\n\x00"); i >= 0 {
-		// We have a full newline-terminated line or a null-terminated sequence.
-		return i + 1, dropCR(data[0:i]), nil
-	}
-	// If we're at EOF, we have a final, non-terminated line. Return it.
-	if atEOF {
-		return len(data), dropCR(data), nil
-	}
-	// Request more data.
-	return 0, nil, nil
-}
-
 func generateTags(cmd *exec.Cmd) int {
-	color.NoColor = (optionIndex(cmd.Args, "--nocolor") > 0)
-	cmd.Args = append(cmd.Args, "--null")
+	cmd.Stderr = os.Stderr
 
 	stdout, err := cmd.StdoutPipe()
 	check(err)
 
 	scanner := bufio.NewScanner(stdout)
-	scanner.Split(scanLinesAndNulls)
+	scanner.Split(bufio.ScanLines)
 
 	var (
-		line      []byte
-		curPath   string
-		groupIdxs []int
+		line          []byte
+		colorlessLine []byte
+		curPath       string
+		groupIdxs     []int
 	)
 
 	aliasFile := NewAliasFile()
@@ -146,77 +139,107 @@ func generateTags(cmd *exec.Cmd) int {
 
 	for scanner.Scan() {
 		line = scanner.Bytes()
-		if groupIdxs = lineNumberRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
-			// Extract and tagged match
-			aliasFile.WriteAlias(aliasIndex, curPath, string(line[groupIdxs[2]:groupIdxs[3]]), string(line[groupIdxs[4]:groupIdxs[5]]))
-			fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
-			aliasIndex++
-		} else if groupIdxs = pathRe.FindSubmatchIndex(line); len(groupIdxs) > 0 {
-			// Extract and print path
-			curPath = string(line[groupIdxs[2]:groupIdxs[3]])
+		colorlessLine = ansi.ReplaceAll(line, nil) // strip ANSI
+		if len(curPath) == 0 {
+			// Path is always in the first line of a group (the heading). Extract and print it
+			curPath = string(colorlessLine)
 			curPath, err = filepath.Abs(curPath)
 			check(err)
-			fmt.Println(string(line[:groupIdxs[1]]))
-		} else {
 			fmt.Println(string(line))
+		} else if groupIdxs = lineNumberRe.FindSubmatchIndex(colorlessLine); len(groupIdxs) > 0 {
+			// Extract and tag matches
+			aliasFile.WriteAlias(
+				aliasIndex,
+				curPath,
+				string(colorlessLine[groupIdxs[2]:groupIdxs[3]]),
+				string(colorlessLine[groupIdxs[4]:groupIdxs[5]]))
+			fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
+			aliasIndex++
+		} else {
+			// Empty line. End of grouping, reset curPath context
+			fmt.Println(string(line))
+			curPath = ""
 		}
 	}
 
 	err = cmd.Wait()
-	if err != nil {
-		return 1
-	}
-	return 0
+	return extractCmdExitCode(err)
 }
 
 func passThrough(cmd *exec.Cmd) int {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	err := cmd.Run()
-	if err != nil {
-		return 1
-	}
-	return 0
+	return extractCmdExitCode(err)
 }
 
-func isatty(f *os.File) bool {
-	stat, err := f.Stat()
-	check(err)
-	return stat.Mode()&os.ModeCharDevice != 0
+func validateSearchProg(prog string) error {
+	switch prog {
+	case "ag", "rg":
+		return nil
+	default:
+		return fmt.Errorf(
+			"invalid environment variable TAG_SEARCH_PROG='%s'. only 'ag' and 'rg' are supported.",
+			prog)
+	}
+}
+
+func constructTagArgs(searchProg string, userArgs []string) []string {
+	if isatty(os.Stdout) {
+		switch searchProg {
+		case "ag":
+			return []string{"--group", "--color", "--column"}
+		case "rg":
+			// ripgrep can't handle more than one --color option, so if the user provides one
+			// we have to explicilty keep tag from passing its own --color option
+			if optionIndex(userArgs, "--color") >= 0 {
+				return []string{"--heading", "--column"}
+			}
+			return []string{"--heading", "--color", "always", "--column"}
+		}
+	}
+	return []string{}
+}
+
+func handleColorSetting(prog string, args []string) {
+	switch prog {
+	case "ag":
+		color.NoColor = (optionIndex(args, "--nocolor") >= 0)
+	case "rg":
+		colorFlagIdx := optionIndex(args, "--color")
+		color.NoColor = (colorFlagIdx >= 0 && args[colorFlagIdx+1] == "never")
+	}
 }
 
 func main() {
-	noTag := false
+	searchProg := getEnvDefault("TAG_SEARCH_PROG", "ag")
+	check(validateSearchProg(searchProg))
+
+	userArgs := os.Args[1:]
+
+	disableTag := false
 	var tagArgs []string
 
-	switch i := optionIndex(os.Args, "--notag"); {
+	switch i := optionIndex(userArgs, "--notag"); {
 	case i > 0:
-		os.Args = append(os.Args[:i], os.Args[i+1:]...)
+		userArgs = append(userArgs[:i], userArgs[i+1:]...)
 		fallthrough
-	case len(os.Args) == 1:
-		noTag = true
+	case len(userArgs) == 0: // no arguments; fall back to help message
+		disableTag = true
 	default:
-		tagArgs = []string{"--group", "--color", "--column"}
+		tagArgs = constructTagArgs(searchProg, userArgs)
 	}
+	finalArgs := append(tagArgs, userArgs...)
 
-	/* From ag src/options.c:
-	 * If we're not outputting to a terminal. change output to:
-	 * turn off colors
-	 * print filenames on every line
-	 */
-	args := os.Args[1:]
-	if isatty(os.Stdout) {
-		args = append(tagArgs, args...)
-	}
+	cmd := exec.Command(searchProg, finalArgs...)
 
-	cmd := exec.Command("ag", args...)
-	cmd.Stderr = os.Stderr
-
-	if noTag || !isatty(os.Stdin) || !isatty(os.Stdout) {
+	if disableTag || !isatty(os.Stdin) || !isatty(os.Stdout) {
 		// Data being piped from stdin
 		os.Exit(passThrough(cmd))
 	}
 
+	handleColorSetting(searchProg, finalArgs)
 	os.Exit(generateTags(cmd))
 }
