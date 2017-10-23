@@ -77,7 +77,7 @@ func NewAliasFile() *AliasFile {
 	aliasPrefix := getEnvDefault("TAG_ALIAS_PREFIX", "e")
 	aliasCmdFmtString := getEnvDefault(
 		"TAG_CMD_FMT_STRING",
-		"vim -c 'call cursor({{.LineNumber}}, {{.ColumnNumber}})' '{{.Filename}}'")
+		`vim -c "call cursor({{.LineNumber}}, {{.ColumnNumber}})" "{{.Filename}}"`)
 
 	a := &AliasFile{
 		fmtStr:   "alias " + aliasPrefix + "{{.MatchIndex}}='" + aliasCmdFmtString + "'\n",
