@@ -58,6 +58,7 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
     - `bash`
       ```bash
       if hash ag 2>/dev/null; then
+        export TAG_SEARCH_PROG=ag  # replace with rg for ripgrep
         tag() { command tag "$@"; source ${TAG_ALIAS_FILE:-/tmp/tag_aliases} 2>/dev/null; }
         alias ag=tag  # replace with rg for ripgrep
       fi
@@ -66,6 +67,7 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
     - `zsh`
       ```zsh
       if (( $+commands[tag] )); then
+        export TAG_SEARCH_PROG=ag  # replace with rg for ripgrep
         tag() { command tag "$@"; source ${TAG_ALIAS_FILE:-/tmp/tag_aliases} 2>/dev/null }
         alias ag=tag  # replace with rg for ripgrep
       fi
@@ -74,6 +76,7 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
     - `fish - ~/.config/fish/functions/tag.fish`
       ```fish
       function tag
+          set -x TAG_SEARCH_PROG ag  # replace with rg for ripgrep
           set -q TAG_ALIAS_FILE; or set -l TAG_ALIAS_FILE /tmp/tag_aliases
           command tag $argv; and source $TAG_ALIAS_FILE ^/dev/null
           alias ag tag  # replace with rg for ripgrep
