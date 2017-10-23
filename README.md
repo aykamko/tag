@@ -52,8 +52,7 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
       $ go install github.com/aykamko/tag
       ```
 
-1. By default, `tag` uses `ag` as its search backend. To use `ripgrep` instead, set the environment variable `TAG_SEARCH_PROG=rg`.
-> To persist this setting, put it in your `bashrc`/`zshrc`. 
+1. By default, `tag` uses `ag` as its search backend. To use `ripgrep` instead, set the environment variable `TAG_SEARCH_PROG=rg`. (To persist this setting, put it in your `bashrc`/`zshrc`.)
 
 1. Since tag generates a file with command aliases for your shell, you'll have to drop the following in your `bashrc`/`zshrc` to actually pick up those aliases.
     - `bash`
