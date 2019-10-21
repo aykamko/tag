@@ -98,7 +98,8 @@ $ time ( for _ in {1..10}; do tag EXPORT_SYMBOL_GPL >/dev/null 2>&1; done )
   - Default: `e`
 - `TAG_CMD_FMT_STRING`
   - Format string for alias commands. Must contain `{{.Filename}}`, `{{.LineNumber}}`, and `{{.ColumnNumber}}` for proper substitution.
-  - Default: `vim -c 'call cursor({{.LineNumber}}, {{.ColumnNumber}})' '{{.Filename}}'`
+  - Default (vim): `vim -c 'call cursor({{.LineNumber}}, {{.ColumnNumber}})' '{{.Filename}}'`
+  - Emacs: `emacsclient -n -c +{{.LineNumber}}:{{.ColumnNumber}} '{{.Filename}}'`
 
 # License
 
