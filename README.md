@@ -1,4 +1,4 @@
-tag - Tag your ag matches
+tag - Tag your ag and ripgrep matches
 ====
 ![revolv++](tag.gif)
 
