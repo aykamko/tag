@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"syscall"
 	"text/template"
+	"strings"
 
 	"github.com/fatih/color"
 )
@@ -155,10 +156,15 @@ func generateTags(cmd *exec.Cmd) int {
 				string(colorlessLine[groupIdxs[4]:groupIdxs[5]]))
 			fmt.Printf("%s %s\n", tagPrefix(aliasIndex), string(line))
 			aliasIndex++
+		} else if len(line) > 0 {
+			// The rest of the lines that are not matches are padded to keep alignment
+			colorlessTagPrefix := ansi.ReplaceAllString(tagPrefix(aliasIndex), "")
+			padding := strings.Repeat(" ", len(colorlessTagPrefix))
+			fmt.Printf("%s %s\n", padding, string(line))
 		} else {
 			// Empty line. End of grouping, reset curPath context
-			fmt.Println(string(line))
 			curPath = ""
+			fmt.Println(string(line))
 		}
 	}
 
